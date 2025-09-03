@@ -11,10 +11,13 @@ type FieldChange = {
 	nonNullable?: { from: boolean; to: boolean };
 	primaryKey?: { from: boolean; to: boolean };
 	default?: { from: AnyExpression | undefined; to: AnyExpression | undefined };
+	foreignKey?: {
+		from: Field["foreignKey"] | undefined;
+		to: Field["foreignKey"] | undefined;
+	};
 };
 
 type Field = DataModel["tables"][number]["fields"][number];
-type Relationship = DataModel["relationships"][number];
 
 type TableModification = {
 	tableName: string;
@@ -25,17 +28,6 @@ type TableModification = {
 		changes: FieldChange;
 	}>;
 	accessControlChanged: boolean;
-};
-
-type RelationshipChange = {
-	type?: { from: string; to: string };
-	onDelete?: { from: string | undefined; to: string | undefined };
-	onUpdate?: { from: string | undefined; to: string | undefined };
-};
-
-type RelationshipModification = {
-	relationship: Relationship;
-	changes: RelationshipChange;
 };
 
 type AccessControlChange = {
@@ -51,17 +43,11 @@ export type TableDiff = {
 	modified: TableModification[];
 };
 
-export type RelationshipDiff = {
-	added: Relationship[];
-	removed: Relationship[];
-	modified: RelationshipModification[];
-};
-
 export type AccessControlDiff = {
 	tables: Array<{ tableName: string; changes: AccessControlChange }>;
 };
 
-export type DatabaseDiff = { tables: TableDiff; relationships: RelationshipDiff; accessControl: AccessControlDiff };
+export type DatabaseDiff = { tables: TableDiff; accessControl: AccessControlDiff };
 export type MigrationResult = { sql: string; accessControlDiff: AccessControlDiff };
 
 /**
@@ -69,10 +55,9 @@ export type MigrationResult = { sql: string; accessControlDiff: AccessControlDif
  */
 export function generateDatabaseDiff(oldModel: DataModel, newModel: DataModel): DatabaseDiff {
 	const tableDiff = generateTableDiff(oldModel.tables, newModel.tables);
-	const relationshipDiff = generateRelationshipDiff(oldModel.relationships, newModel.relationships);
 	const accessControlDiff = generateAccessControlDiff(oldModel.tables, newModel.tables);
 
-	return { tables: tableDiff, relationships: relationshipDiff, accessControl: accessControlDiff };
+	return { tables: tableDiff, accessControl: accessControlDiff };
 }
 
 /**
@@ -96,34 +81,52 @@ export function generateMigrationFromDiff(diff: DatabaseDiff, targetModel: DataM
 		// Add new fields
 		for (const field of modification.fieldsAdded) {
 			sqlParts.push(generateAddColumnSQL(modification.tableName, field, dialect));
+
+			// If the new field has a foreign key, add it separately for PostgreSQL
+			if (field.foreignKey && dialect === Dialect.POSTGRESQL) {
+				const constraintName = `fk_${modification.tableName}_${field.name}`;
+				let sql = `ALTER TABLE "${modification.tableName}" ADD CONSTRAINT "${constraintName}" FOREIGN KEY ("${field.name}") REFERENCES "${field.foreignKey.table}" ("${field.foreignKey.field}")`;
+
+				if (field.foreignKey.onDelete) sql += ` ON DELETE ${field.foreignKey.onDelete.toUpperCase().replace(" ", " ")}`;
+				if (field.foreignKey.onUpdate) sql += ` ON UPDATE ${field.foreignKey.onUpdate.toUpperCase().replace(" ", " ")}`;
+				sqlParts.push(`${sql};`);
+			}
 		}
 
 		// Remove fields
 		for (const field of modification.fieldsRemoved) {
+			// For PostgreSQL, drop foreign key constraint first if it exists
+			if (field.foreignKey && dialect === Dialect.POSTGRESQL) {
+				const constraintName = `fk_${modification.tableName}_${field.name}`;
+				sqlParts.push(`ALTER TABLE "${modification.tableName}" DROP CONSTRAINT IF EXISTS "${constraintName}";`);
+			}
 			sqlParts.push(`ALTER TABLE "${modification.tableName}" DROP COLUMN "${field.name}";`);
 		}
 
 		// Modify existing fields
 		for (const fieldMod of modification.fieldsModified) {
+			// Handle foreign key changes
+			if (fieldMod.changes.foreignKey && dialect === Dialect.POSTGRESQL) {
+				const constraintName = `fk_${modification.tableName}_${fieldMod.field.name}`;
+
+				// Drop old constraint if it existed
+				if (fieldMod.changes.foreignKey.from) {
+					sqlParts.push(`ALTER TABLE "${modification.tableName}" DROP CONSTRAINT IF EXISTS "${constraintName}";`);
+				}
+
+				// Add new constraint if it exists
+				if (fieldMod.changes.foreignKey.to) {
+					const fk = fieldMod.changes.foreignKey.to;
+					let sql = `ALTER TABLE "${modification.tableName}" ADD CONSTRAINT "${constraintName}" FOREIGN KEY ("${fieldMod.field.name}") REFERENCES "${fk.table}" ("${fk.field}")`;
+
+					if (fk.onDelete) sql += ` ON DELETE ${fk.onDelete.toUpperCase().replace(" ", " ")}`;
+					if (fk.onUpdate) sql += ` ON UPDATE ${fk.onUpdate.toUpperCase().replace(" ", " ")}`;
+					sqlParts.push(`${sql};`);
+				}
+			}
+
 			sqlParts.push(generateAlterColumnSQL(modification.tableName, fieldMod.field, fieldMod.changes, dialect));
 		}
-	}
-
-	// Handle relationship removals
-	for (const relationship of diff.relationships.removed) {
-		sqlParts.push(generateDropForeignKeySQL(relationship, dialect));
-	}
-
-	// Handle relationship additions
-	for (const relationship of diff.relationships.added) {
-		sqlParts.push(generateCreateForeignKeySQL(relationship, dialect));
-	}
-
-	// Handle relationship modifications
-	for (const relationshipMod of diff.relationships.modified) {
-		// Drop and recreate with new constraints
-		sqlParts.push(generateDropForeignKeySQL(relationshipMod.relationship, dialect));
-		sqlParts.push(generateCreateForeignKeySQL(relationshipMod.relationship, dialect));
 	}
 
 	// Handle RLS policies for PostgreSQL
@@ -139,11 +142,22 @@ export function generateInitialMigration(model: DataModel, dialect: Dialect): Mi
 	const sqlParts: string[] = [];
 
 	// Create all tables
-	for (const table of model.tables) sqlParts.push(generateCreateTableSQL(table, dialect, model.relationships));
+	for (const table of model.tables) sqlParts.push(generateCreateTableSQL(table, dialect));
 
-	// Create all relationships (PostgreSQL only - SQLite uses inline foreign keys)
+	// Create foreign key constraints for PostgreSQL (SQLite handles them inline)
 	if (dialect === Dialect.POSTGRESQL) {
-		for (const relationship of model.relationships) sqlParts.push(generateCreateForeignKeySQL(relationship, dialect));
+		for (const table of model.tables) {
+			for (const field of table.fields) {
+				if (field.foreignKey) {
+					const constraintName = `fk_${table.name}_${field.name}`;
+					let sql = `ALTER TABLE "${table.name}" ADD CONSTRAINT "${constraintName}" FOREIGN KEY ("${field.name}") REFERENCES "${field.foreignKey.table}" ("${field.foreignKey.field}")`;
+
+					if (field.foreignKey.onDelete) sql += ` ON DELETE ${field.foreignKey.onDelete.toUpperCase().replace(" ", " ")}`;
+					if (field.foreignKey.onUpdate) sql += ` ON UPDATE ${field.foreignKey.onUpdate.toUpperCase().replace(" ", " ")}`;
+					sqlParts.push(`${sql};`);
+				}
+			}
+		}
 	}
 
 	// Generate RLS policies for PostgreSQL
@@ -212,49 +226,17 @@ function generateFieldDiff(oldFields: Field[], newFields: Field[]) {
 			changes.primaryKey = { from: oldField.primaryKey ?? false, to: newField.primaryKey ?? false };
 
 		if (!deepEqual(oldField.default, newField.default)) changes.default = { from: oldField.default, to: newField.default };
+
+		if (!deepEqual(oldField.foreignKey, newField.foreignKey))
+			changes.foreignKey = { from: oldField.foreignKey, to: newField.foreignKey };
+
 		if (Object.keys(changes).length > 0) fieldsModified.push({ field: newField, changes });
 	}
 
 	return { fieldsAdded, fieldsRemoved, fieldsModified };
 }
 
-function generateRelationshipDiff(oldRelationships: Relationship[], newRelationships: Relationship[]): RelationshipDiff {
-	const oldRelMap = new Map(oldRelationships.map((r) => [`${r.fromTable}.${r.name}`, r]));
-	const newRelMap = new Map(newRelationships.map((r) => [`${r.fromTable}.${r.name}`, r]));
-
-	const added = newRelationships.filter((r) => !oldRelMap.has(`${r.fromTable}.${r.name}`));
-	const removed = oldRelationships.filter((r) => !newRelMap.has(`${r.fromTable}.${r.name}`));
-	const modified: RelationshipModification[] = [];
-
-	for (const newRel of newRelationships) {
-		const key = `${newRel.fromTable}.${newRel.name}`;
-		const oldRel = oldRelMap.get(key);
-		if (!oldRel) continue;
-
-		const changes: RelationshipChange = {};
-
-		if (oldRel.type !== newRel.type) {
-			changes.type = { from: oldRel.type, to: newRel.type };
-		}
-
-		if (oldRel.onDelete !== newRel.onDelete) {
-			changes.onDelete = { from: oldRel.onDelete, to: newRel.onDelete };
-		}
-
-		if (oldRel.onUpdate !== newRel.onUpdate) {
-			changes.onUpdate = { from: oldRel.onUpdate, to: newRel.onUpdate };
-		}
-
-		if (Object.keys(changes).length > 0) {
-			modified.push({
-				relationship: newRel,
-				changes,
-			});
-		}
-	}
-
-	return { added, removed, modified };
-}
+// SQL Generation Functions
 
 function generateAccessControlDiff(oldTables: DataModel["tables"], newTables: DataModel["tables"]): AccessControlDiff {
 	const oldTableMap = new Map(oldTables.map((t) => [t.name, t]));
@@ -361,7 +343,7 @@ function mapFieldTypeToSQL(fieldType: string, dialect: Dialect): string {
 	return typeMap[dialect][fieldType as keyof (typeof typeMap)[typeof dialect]] || "TEXT";
 }
 
-function generateCreateTableSQL(table: DataModel["tables"][number], dialect: Dialect, relationships?: Relationship[]): string {
+function generateCreateTableSQL(table: DataModel["tables"][number], dialect: Dialect): string {
 	const columns = table.fields.map((field) => {
 		const parts = [`"${field.name}"`, mapFieldTypeToSQL(field.type, dialect)];
 
@@ -374,14 +356,17 @@ function generateCreateTableSQL(table: DataModel["tables"][number], dialect: Dia
 
 	// For SQLite, add foreign key constraints inline
 	const foreignKeys: string[] = [];
-	if ((dialect === Dialect.SQLITE_MINIMAL || dialect === Dialect.SQLITE_EXTENSIONS) && relationships) {
-		const tableRelationships = relationships.filter((rel) => rel.fromTable === table.name);
-		for (const rel of tableRelationships) {
-			let foreignKeyClause = `  FOREIGN KEY ("${rel.name}") REFERENCES "${rel.toTable}" ("id")`;
+	if (dialect === Dialect.SQLITE_MINIMAL || dialect === Dialect.SQLITE_EXTENSIONS) {
+		for (const field of table.fields) {
+			if (field.foreignKey) {
+				let foreignKeyClause = `  FOREIGN KEY ("${field.name}") REFERENCES "${field.foreignKey.table}" ("${field.foreignKey.field}")`;
 
-			if (rel.onDelete) foreignKeyClause += ` ON DELETE ${rel.onDelete.toUpperCase().replace(" ", " ")}`;
-			if (rel.onUpdate) foreignKeyClause += ` ON UPDATE ${rel.onUpdate.toUpperCase().replace(" ", " ")}`;
-			foreignKeys.push(foreignKeyClause);
+				if (field.foreignKey.onDelete)
+					foreignKeyClause += ` ON DELETE ${field.foreignKey.onDelete.toUpperCase().replace(" ", " ")}`;
+				if (field.foreignKey.onUpdate)
+					foreignKeyClause += ` ON UPDATE ${field.foreignKey.onUpdate.toUpperCase().replace(" ", " ")}`;
+				foreignKeys.push(foreignKeyClause);
+			}
 		}
 	}
 
@@ -441,30 +426,6 @@ function generateAlterColumnSQL(tableName: string, field: Field, changes: FieldC
 	}
 
 	return sqlParts.join("\n");
-}
-
-function generateCreateForeignKeySQL(relationship: Relationship, dialect: Dialect): string {
-	if (dialect === Dialect.SQLITE_MINIMAL || dialect === Dialect.SQLITE_EXTENSIONS) {
-		// SQLite requires foreign keys to be defined inline during table creation, handled in generateCreateTableSQL instead
-		return `-- Foreign key for ${relationship.fromTable}.${relationship.name} -> ${relationship.toTable}.id is defined inline`;
-	}
-
-	const constraintName = `fk_${relationship.fromTable}_${relationship.name}`;
-	let sql = `ALTER TABLE "${relationship.fromTable}" ADD CONSTRAINT "${constraintName}" FOREIGN KEY ("${relationship.name}") REFERENCES "${relationship.toTable}" ("id")`;
-
-	if (relationship.onDelete) sql += ` ON DELETE ${relationship.onDelete.toUpperCase().replace(" ", " ")}`;
-	if (relationship.onUpdate) sql += ` ON UPDATE ${relationship.onUpdate.toUpperCase().replace(" ", " ")}`;
-	return `${sql};`;
-}
-
-function generateDropForeignKeySQL(relationship: Relationship, dialect: Dialect): string {
-	const constraintName = `fk_${relationship.fromTable}_${relationship.name}`;
-
-	if (dialect === Dialect.POSTGRESQL) {
-		return `ALTER TABLE "${relationship.fromTable}" DROP CONSTRAINT IF EXISTS "${constraintName}";`;
-	} else {
-		return `-- SQLite does not support dropping foreign key constraints directly for "${constraintName}"`;
-	}
 }
 
 // Only PostgreSQL
@@ -563,13 +524,17 @@ function createParserConfig(model: DataModel, dialect: Dialect): Config {
 			user_id: { $uuid: "550e8400-e29b-41d4-a716-446655440000" },
 			// Add other common variables that might be used in access control
 		},
-		relationships: model.relationships.map((relationship) => ({
-			table: relationship.fromTable,
-			field: relationship.name,
-			toTable: relationship.toTable,
-			toField: "id",
-			type: relationship.type === "one-to-one" ? "one-to-one" : "many-to-one",
-		})),
+		relationships: model.tables.flatMap((table) =>
+			table.fields
+				.filter((field) => field.foreignKey)
+				.map((field) => ({
+					table: table.name,
+					field: field.name,
+					toTable: field.foreignKey!.table,
+					toField: field.foreignKey!.field,
+					type: "many-to-one" as const,
+				})),
+		),
 		dialect,
 	};
 }

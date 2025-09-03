@@ -13,6 +13,15 @@ export const dataModelSchema = z
 						nonNullable: z.boolean().optional(),
 						primaryKey: z.boolean().optional(),
 						default: anyExpressionSchema.optional(),
+						foreignKey: z
+							.object({
+								table: z.string(),
+								field: z.string(),
+								onDelete: z.enum(["cascade", "restrict", "set null"]).optional(),
+								onUpdate: z.enum(["cascade", "restrict", "set null"]).optional(),
+							})
+							.strict()
+							.optional(),
 					}),
 				),
 				accessControl: z.object({
@@ -21,16 +30,6 @@ export const dataModelSchema = z
 					update: conditionSchema,
 					delete: conditionSchema,
 				}),
-			}),
-		),
-		relationships: z.array(
-			z.object({
-				name: z.string(),
-				fromTable: z.string(),
-				toTable: z.string(),
-				type: z.enum(["one-to-one", "many-to-one"]),
-				onDelete: z.enum(["cascade", "restrict", "set null"]).optional(),
-				onUpdate: z.enum(["cascade", "restrict", "set null"]).optional(),
 			}),
 		),
 	})

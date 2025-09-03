@@ -75,7 +75,6 @@ const dataModel: DataModel = {
       },
     },
   ],
-  relationships: [],
 };
 
 // Generate initial migration
@@ -104,6 +103,12 @@ type DataModel = {
       nonNullable?: boolean;
       primaryKey?: boolean;
       default?: any; // JSON expression
+      foreignKey?: {
+        table: string;
+        field: string;
+        onDelete?: "cascade" | "restrict" | "set null";
+        onUpdate?: "cascade" | "restrict" | "set null";
+      };
     }>;
     accessControl: {
       read: Condition;
@@ -111,14 +116,6 @@ type DataModel = {
       update: Condition;
       delete: Condition;
     };
-  }>;
-  relationships: Array<{
-    name: string;
-    fromTable: string;
-    toTable: string;
-    type: "one-to-one" | "many-to-one";
-    onDelete?: "cascade" | "restrict" | "set null";
-    onUpdate?: "cascade" | "restrict" | "set null";
   }>;
 };
 ```
@@ -226,7 +223,16 @@ const blogModel: DataModel = {
         { name: "id", type: "uuid", nonNullable: true, primaryKey: true },
         { name: "title", type: "string", nonNullable: true },
         { name: "content", type: "string", nonNullable: true },
-        { name: "author_id", type: "uuid", nonNullable: true },
+        {
+          name: "author_id",
+          type: "uuid",
+          nonNullable: true,
+          foreignKey: {
+            table: "users",
+            field: "id",
+            onDelete: "cascade",
+          },
+        },
         { name: "published_at", type: "datetime", nonNullable: false },
       ],
       accessControl: {
@@ -235,15 +241,6 @@ const blogModel: DataModel = {
         update: { $eq: [{ $field: "author_id" }, { $var: "user_id" }] },
         delete: { $eq: [{ $field: "author_id" }, { $var: "user_id" }] },
       },
-    },
-  ],
-  relationships: [
-    {
-      name: "author_id",
-      fromTable: "posts",
-      toTable: "users",
-      type: "many-to-one",
-      onDelete: "cascade",
     },
   ],
 };
@@ -266,7 +263,6 @@ const v1Model: DataModel = {
       accessControl: { read: true, create: true, update: true, delete: true },
     },
   ],
-  relationships: [],
 };
 
 // Updated model with new field
@@ -287,7 +283,6 @@ const v2Model: DataModel = {
       accessControl: { read: true, create: true, update: true, delete: true },
     },
   ],
-  relationships: [],
 };
 
 // Generate incremental migration

@@ -82,7 +82,16 @@ describe("Database Integration Tests", () => {
 					{ name: "id", type: "uuid", nonNullable: true, primaryKey: true },
 					{ name: "title", type: "string", nonNullable: true },
 					{ name: "content", type: "string", nonNullable: false },
-					{ name: "author_id", type: "uuid", nonNullable: true },
+					{
+						name: "author_id",
+						type: "uuid",
+						nonNullable: true,
+						foreignKey: {
+							table: "users",
+							field: "id",
+							onDelete: "cascade",
+						},
+					},
 					{ name: "published", type: "boolean", nonNullable: true, default: false },
 					{ name: "view_count", type: "number", nonNullable: true, default: 0 },
 					{ name: "tags", type: "object", nonNullable: false },
@@ -96,15 +105,6 @@ describe("Database Integration Tests", () => {
 					update: { author_id: { $eq: { $var: "user_id" } } },
 					delete: { author_id: { $eq: { $var: "user_id" } } },
 				},
-			},
-		],
-		relationships: [
-			{
-				name: "author_id",
-				fromTable: "posts",
-				toTable: "users",
-				type: "many-to-one",
-				onDelete: "cascade",
 			},
 		],
 	};
@@ -186,8 +186,26 @@ describe("Database Integration Tests", () => {
 						fields: [
 							{ name: "id", type: "uuid", nonNullable: true, primaryKey: true },
 							{ name: "content", type: "string", nonNullable: true },
-							{ name: "author_id", type: "uuid", nonNullable: true },
-							{ name: "post_id", type: "uuid", nonNullable: true },
+							{
+								name: "author_id",
+								type: "uuid",
+								nonNullable: true,
+								foreignKey: {
+									table: "users",
+									field: "id",
+									onDelete: "cascade",
+								},
+							},
+							{
+								name: "post_id",
+								type: "uuid",
+								nonNullable: true,
+								foreignKey: {
+									table: "posts",
+									field: "id",
+									onDelete: "cascade",
+								},
+							},
 							{ name: "created_at", type: "datetime", nonNullable: true, default: { $func: { NOW: [] } } },
 						],
 						accessControl: {
@@ -196,23 +214,6 @@ describe("Database Integration Tests", () => {
 							update: { author_id: { $eq: { $var: "user_id" } } },
 							delete: { author_id: { $eq: { $var: "user_id" } } },
 						},
-					},
-				],
-				relationships: [
-					...sampleModel.relationships,
-					{
-						name: "author_id",
-						fromTable: "comments",
-						toTable: "users",
-						type: "many-to-one",
-						onDelete: "cascade",
-					},
-					{
-						name: "post_id",
-						fromTable: "comments",
-						toTable: "posts",
-						type: "many-to-one",
-						onDelete: "cascade",
 					},
 				],
 			};
@@ -415,7 +416,6 @@ describe("Database Integration Tests", () => {
 						},
 					},
 				],
-				relationships: [],
 			};
 
 			const pgMigration = generateInitialMigration(complexModel, Dialect.POSTGRESQL);
@@ -453,7 +453,6 @@ describe("Database Integration Tests", () => {
 						},
 					},
 				],
-				relationships: [],
 			};
 
 			const sqliteBasic = generateInitialMigration(jsonModel, Dialect.SQLITE_MINIMAL);
@@ -494,7 +493,6 @@ describe("Database Integration Tests", () => {
 						},
 					},
 				],
-				relationships: [],
 			};
 
 			const extMigration = generateInitialMigration(extModel, Dialect.SQLITE_EXTENSIONS);

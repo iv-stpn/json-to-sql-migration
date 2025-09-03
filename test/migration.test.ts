@@ -28,7 +28,6 @@ describe("Database Migration System", () => {
 				},
 			},
 		],
-		relationships: [],
 	};
 
 	test("generateFullMigration should create proper SQL for PostgreSQL", () => {
@@ -125,22 +124,49 @@ describe("Database Migration System", () => {
 		const oldModel = simpleModel;
 		const newModel: DataModel = {
 			...simpleModel,
-			relationships: [
+			tables: [
+				...simpleModel.tables,
 				{
-					name: "user_id",
-					fromTable: "posts",
-					toTable: "users",
-					type: "many-to-one",
-					onDelete: "cascade",
+					name: "posts",
+					fields: [
+						{
+							name: "id",
+							type: "uuid",
+							nonNullable: true,
+							primaryKey: true,
+						},
+						{
+							name: "title",
+							type: "string",
+							nonNullable: true,
+						},
+						{
+							name: "user_id",
+							type: "uuid",
+							nonNullable: true,
+							foreignKey: {
+								table: "users",
+								field: "id",
+								onDelete: "cascade",
+							},
+						},
+					],
+					accessControl: {
+						read: true,
+						create: true,
+						update: true,
+						delete: true,
+					},
 				},
 			],
 		};
 
 		const diff = generateDatabaseDiff(oldModel, newModel);
 
-		expect(diff.relationships.added).toHaveLength(1);
-		expect(diff.relationships.added[0]?.name).toBe("user_id");
-		expect(diff.relationships.added[0]?.onDelete).toBe("cascade");
+		expect(diff.tables.added).toHaveLength(1);
+		expect(diff.tables.added[0]?.name).toBe("posts");
+		expect(diff.tables.added[0]?.fields.find((f) => f.name === "user_id")?.foreignKey?.table).toBe("users");
+		expect(diff.tables.added[0]?.fields.find((f) => f.name === "user_id")?.foreignKey?.onDelete).toBe("cascade");
 	});
 
 	test("generateMigrationFromDiff should create proper migration SQL", () => {
@@ -191,7 +217,6 @@ describe("Database Migration System", () => {
 					accessControl: { read: true, create: true, update: true, delete: true },
 				},
 			],
-			relationships: [],
 		};
 
 		const postgresResult = generateInitialMigration(modelWithVariousTypes, Dialect.POSTGRESQL);
@@ -234,7 +259,6 @@ describe("Database Migration System", () => {
 					},
 				},
 			],
-			relationships: [],
 		};
 
 		const sqliteBasic = generateInitialMigration(model, Dialect.SQLITE_MINIMAL);
