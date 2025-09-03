@@ -1,0 +1,42 @@
+{
+	// This is based on https://bun.sh/docs/typescript#suggested-compileroptions
+	"$schema": "https://json.schemastore.org/tsconfig",
+	"display": "Bun",
+	"docs": "https://bun.sh/docs/typescript",
+
+	"compilerOptions": {
+		// Environment setup & latest features
+		"lib": ["ESNext", "ES2022.Intl", "DOM"],
+		"target": "ESNext",
+		"module": "ESNext",
+		"moduleDetection": "force",
+		"jsx": "react-jsx",
+		"allowJs": true,
+
+		// Bundler mode
+		"moduleResolution": "Bundler",
+		"allowImportingTsExtensions": true,
+		"verbatimModuleSyntax": true,
+		"noEmit": true,
+
+		// Declaration generation (enabled when needed)
+		"declaration": true,
+		"declarationMap": true,
+		"emitDeclarationOnly": false,
+
+		// Best practices
+		"strict": true,
+		"skipLibCheck": true,
+		"noFallthroughCasesInSwitch": true,
+		"noUncheckedIndexedAccess": true,
+		"noImplicitOverride": true,
+
+		// Some stricter flags (disabled by default)
+		"noUnusedLocals": false,
+		"noUnusedParameters": false,
+		"noPropertyAccessFromIndexSignature": false,
+
+		// Other flags
+		"resolveJsonModule": true
+	}
+}
