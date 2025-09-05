@@ -106,8 +106,8 @@ type DataModel = {
       foreignKey?: {
         table: string;
         field: string;
-        onDelete?: "cascade" | "restrict" | "set null";
-        onUpdate?: "cascade" | "restrict" | "set null";
+        onDelete?: "cascade" | "restrict" | "set_null";
+        onUpdate?: "cascade" | "restrict" | "set_null";
       };
     }>;
     accessControl: {

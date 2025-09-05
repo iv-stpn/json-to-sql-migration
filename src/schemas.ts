@@ -17,8 +17,8 @@ export const dataModelSchema = z
 							.object({
 								table: z.string(),
 								field: z.string(),
-								onDelete: z.enum(["cascade", "restrict", "set null"]).optional(),
-								onUpdate: z.enum(["cascade", "restrict", "set null"]).optional(),
+								onDelete: z.enum(["cascade", "restrict", "set_null"]).optional(),
+								onUpdate: z.enum(["cascade", "restrict", "set_null"]).optional(),
 							})
 							.strict()
 							.optional(),
