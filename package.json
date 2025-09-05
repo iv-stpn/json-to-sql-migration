@@ -1,7 +1,7 @@
 {
 	"name": "json-to-sql-migration",
 	"type": "module",
-	"version": "2.1.0",
+	"version": "2.1.1",
 	"description": "A TypeScript library that converts JSON-based data schemas into SQL migrations",
 	"keywords": [
 		"sql",

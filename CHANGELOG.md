@@ -1,5 +1,11 @@
 # json-to-sql-migration
 
+## 2.1.1
+
+### Patch Changes
+
+- [`3bf7064`](https://github.com/iv-stpn/json-to-sql-migration/commit/3bf70645b187f34d6101cd69c6e4c93ec44ccfba) Thanks [@iv-stpn](https://github.com/iv-stpn)! - update dependencies
+
 ## 2.1.0
 
 ### Minor Changes
