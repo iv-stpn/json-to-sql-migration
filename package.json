@@ -57,6 +57,7 @@
 	"license": "MIT",
 	"author": "Ivan Stepanian <iv.stpn@gmail.com>",
 	"dependencies": {
+		"json-to-sql-parser": "^4.0.1",
 		"zod": "^4"
 	},
 	"devDependencies": {
@@ -65,9 +66,8 @@
 		"@changesets/cli": "^2",
 		"@types/bun": "latest",
 		"@types/node": "^20",
-		"@types/pg": "^8.11.10",
-		"json-to-sql-parser": "^3.2.0",
-		"pg": "^8.13.0",
+		"@types/pg": "^8.15.0",
+		"pg": "^8.16.0",
 		"typescript": "^5"
 	},
 	"engines": {
