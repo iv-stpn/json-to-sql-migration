@@ -57,7 +57,7 @@
 	"license": "MIT",
 	"author": "Ivan Stepanian <iv.stpn@gmail.com>",
 	"dependencies": {
-		"json-to-sql-parser": "^4.0.1",
+		"json-to-sql-parser": "^4.0.2",
 		"zod": "^4"
 	},
 	"devDependencies": {
